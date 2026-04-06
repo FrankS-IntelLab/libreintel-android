@@ -259,6 +259,25 @@ document.getElementById("chat-back").addEventListener("click", () => {
 document.getElementById("chat-send").addEventListener("click", sendMessage);
 chatInput.addEventListener("keydown", (e) => { if (e.key === "Enter") sendMessage(); });
 
+// --- Voice Input (injected into active tab) ---
+
+const voiceBtn = document.getElementById("voice-btn");
+
+voiceBtn.addEventListener("click", () => {
+  chrome.runtime.sendMessage({ type: "start-voice-in-tab" });
+});
+
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.type === "push-text") {
+    addNode(msg.text, targetParentId);
+    if (targetParentId) { targetParentId = null; renderTree(); }
+  }
+  if (msg.type === "voice-final") {
+    chatInput.value = msg.text;
+    sendMessage();
+  }
+});
+
 // Show branch button when user selects text in chat messages
 chatMessages.addEventListener("mouseup", () => {
   const sel = window.getSelection().toString().trim();
@@ -421,17 +440,6 @@ document.getElementById("save-settings").addEventListener("click", () => {
 });
 
 // --- Message listener ---
-
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.type === "push-text") {
-    addNode(msg.text, targetParentId);
-    // Auto-unpin after pushing
-    if (targetParentId) {
-      targetParentId = null;
-      renderTree();
-    }
-  }
-});
 
 // --- Init ---
 loadTree();

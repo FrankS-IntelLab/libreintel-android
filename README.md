@@ -16,6 +16,7 @@ A Chrome/Edge extension that turns your browser into a PDF study assistant. Sele
 - **Preview & download** — Preview rendered exports (with flowchart) in the sidebar, or download as `.md`
 - **Per-branch export** — Export or preview any single node and its children, not just the whole tree
 - **Timestamps** — Every node and chat message is timestamped
+- **Voice input** — Click 🎤 to speak your question instead of typing — a voice overlay appears on the page with live transcription
 - **Configurable LLM** — Bring your own API key; presets for DashScope (Qwen) and OpenAI
 - **Persistent storage** — Tree, chat history, and settings saved in `chrome.storage.local`
 - **No backend** — Everything runs locally in the browser
@@ -63,7 +64,6 @@ Any OpenAI-compatible API endpoint works (OpenAI, DashScope, OpenRouter, Ollama,
 ## Roadmap
 
 - [ ] Drag & drop to reorder/reparent nodes
-- [ ] Voice input via Web Speech API
 - [ ] Search across tree nodes and chat history
 
 ## Author

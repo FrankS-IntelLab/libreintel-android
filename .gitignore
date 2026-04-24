@@ -3,3 +3,11 @@
 DEVNOTES.md
 PROJECT_STATUS.md
 .kiro/
+
+# Android build files
+android/.gradle/
+android/app/build/
+android/build/
+android/.idea/
+android/*.iml
+android/local.properties

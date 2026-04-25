@@ -1,12 +1,10 @@
 package com.libreintel.ui.screens.pdf
 
-import android.graphics.Bitmap
-import android.graphics.pdf.PdfRenderer
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
-import android.os.ParcelFileDescriptor
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTransformGestures
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -14,32 +12,42 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PdfViewerScreen(
     pdfUri: String,
     onBack: () -> Unit,
-    onPushToTree: (String, String?) -> Unit,
-    viewModel: PdfViewModel = hiltViewModel()
+    onPushToTree: (String, String?) -> Unit
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
     
-    // Load PDF when screen opens
+    // Try to open PDF with external app
     LaunchedEffect(pdfUri) {
-        viewModel.loadPdf(pdfUri)
+        try {
+            val uri = Uri.parse(pdfUri)
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/pdf")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            
+            if (intent.resolveActivity(context.packageManager) != null) {
+                context.startActivity(intent)
+            } else {
+                // No PDF viewer app found, show error
+                Toast.makeText(context, "No PDF viewer app found", Toast.LENGTH_LONG).show()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(context, "Cannot open PDF: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
     
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(uiState.fileName ?: "PDF Viewer") },
+                title = { Text("PDF Viewer") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
@@ -53,116 +61,61 @@ fun PdfViewerScreen(
             )
         }
     ) { paddingValues ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            when {
-                uiState.isLoading -> {
-                    CircularProgressIndicator(
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-                }
-                uiState.error != null -> {
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .padding(32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(
-                            Icons.Default.Error,
-                            contentDescription = null,
-                            modifier = Modifier.size(48.dp),
-                            tint = MaterialTheme.colorScheme.error
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = uiState.error!!,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(onClick = onBack) {
-                            Text("Go Back")
+            Icon(
+                Icons.Default.PictureAsPdf,
+                contentDescription = null,
+                modifier = Modifier.size(64.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            Text(
+                "Opening PDF...",
+                style = MaterialTheme.typography.titleMedium
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Text(
+                "If no PDF viewer opens, please install a PDF reader app from the Play Store.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            OutlinedButton(
+                onClick = {
+                    try {
+                        val uri = Uri.parse(pdfUri)
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(uri, "application/pdf")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
+                        context.startActivity(intent)
+                    } catch (e: ActivityNotFoundException) {
+                        Toast.makeText(context, "No PDF viewer app installed", Toast.LENGTH_SHORT).show()
                     }
                 }
-                else -> {
-                    // Show PDF page or placeholder
-                    var scale by remember { mutableFloatStateOf(1f) }
-                    var offsetX by remember { mutableFloatStateOf(0f) }
-                    var offsetY by remember { mutableFloatStateOf(0f) }
-                    
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .pointerInput(Unit) {
-                                detectTransformGestures { _, pan, zoom, _ ->
-                                    scale = (scale * zoom).coerceIn(0.5f, 3f)
-                                    offsetX += pan.x
-                                    offsetY += pan.y
-                                }
-                            }
-                    ) {
-                        val bitmap = uiState.currentPageBitmap
-                        if (bitmap != null) {
-                            Image(
-                                bitmap = bitmap.asImageBitmap(),
-                                contentDescription = "PDF page ${uiState.currentPage + 1}",
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .graphicsLayer(
-                                        scaleX = scale,
-                                        scaleY = scale,
-                                        translationX = offsetX,
-                                        translationY = offsetY
-                                    )
-                            )
-                        } else {
-                            Text(
-                                text = "No PDF content",
-                                modifier = Modifier.align(Alignment.Center)
-                            )
-                        }
-                    }
-                    
-                    // Bottom bar with page controls
-                    if (uiState.totalPages > 0) {
-                        Surface(
-                            modifier = Modifier.align(Alignment.BottomCenter),
-                            shadowElevation = 8.dp
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                IconButton(
-                                    onClick = { viewModel.previousPage() },
-                                    enabled = uiState.currentPage > 0
-                                ) {
-                                    Icon(Icons.Default.ChevronLeft, "Previous")
-                                }
-                                
-                                Text(
-                                    "${uiState.currentPage + 1} / ${uiState.totalPages}",
-                                    style = MaterialTheme.typography.bodyLarge
-                                )
-                                
-                                IconButton(
-                                    onClick = { viewModel.nextPage() },
-                                    enabled = uiState.currentPage < uiState.totalPages - 1
-                                ) {
-                                    Icon(Icons.Default.ChevronRight, "Next")
-                                }
-                            }
-                        }
-                    }
-                }
+            ) {
+                Icon(Icons.Default.OpenInNew, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Open Again")
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            TextButton(onClick = onBack) {
+                Text("Go Back")
             }
         }
     }

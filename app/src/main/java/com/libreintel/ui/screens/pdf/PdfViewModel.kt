@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -39,82 +40,111 @@ class PdfViewModel @Inject constructor(
     private var pdfRenderer: PdfRenderer? = null
     private var fileDescriptor: ParcelFileDescriptor? = null
     
+    companion object {
+        private const val TAG = "PdfViewModel"
+    }
+    
     fun loadPdf(path: String) {
         viewModelScope.launch {
             _uiState.value = PdfUiState(isLoading = true)
+            Log.d(TAG, "Loading PDF: $path")
             
             try {
                 withContext(Dispatchers.IO) {
-                    // Try direct file first
-                    val file = File(path)
-                    
-                    if (file.exists() && file.canRead()) {
-                        openPdfFile(file)
-                    } else {
-                        // Try as content:// URI (requires context)
+                    // First, try as content:// URI (most common from document picker)
+                    if (path.startsWith("content://")) {
+                        Log.d(TAG, "Trying as content:// URI")
                         try {
                             val uri = Uri.parse(path)
-                            if (uri.scheme == "content") {
-                                openPdfFromUri(context, uri)
+                            openPdfFromUri(context, uri)
+                            Log.d(TAG, "Successfully opened as content:// URI")
+                            return@withContext
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to open as content:// URI: ${e.message}")
+                            // Continue to try other methods
+                        }
+                    }
+                    
+                    // Try as file:// URI
+                    if (path.startsWith("file://")) {
+                        Log.d(TAG, "Trying as file:// URI")
+                        try {
+                            val uri = Uri.parse(path)
+                            val file = File(uri.path ?: "")
+                            if (file.exists() && file.canRead()) {
+                                openPdfFile(file)
+                                Log.d(TAG, "Successfully opened as file:// URI")
                                 return@withContext
                             }
                         } catch (e: Exception) {
-                            // Try file:// URI instead
+                            Log.e(TAG, "Failed to open as file:// URI: ${e.message}")
                         }
-                        
-                        // Try as file:// URI
-                        try {
-                            val uri = Uri.parse(path)
-                            if (uri.scheme == "file") {
-                                val fileFromUri = File(uri.path ?: "")
-                                if (fileFromUri.exists() && fileFromUri.canRead()) {
-                                    openPdfFile(fileFromUri)
-                                    return@withContext
-                                }
-                            }
-                        } catch (e: Exception) {
-                            // Ignore URI parse errors
-                        }
-                        
-                        // Last try: treat as a direct file path without leading slash
-                        val directFile = File(path)
-                        if (directFile.exists() && directFile.canRead()) {
-                            openPdfFile(directFile)
-                            return@withContext
-                        }
-                        
-                        // Failed
-                        throw Exception("Cannot access PDF file: $path")
                     }
+                    
+                    // Try as direct file path
+                    Log.d(TAG, "Trying as direct file path")
+                    val file = File(path)
+                    if (file.exists() && file.canRead()) {
+                        openPdfFile(file)
+                        Log.d(TAG, "Successfully opened as direct file")
+                        return@withContext
+                    }
+                    
+                    // If we got here, nothing worked
+                    throw Exception("Cannot find or open PDF file. Path: $path")
                 }
             } catch (e: Exception) {
+                Log.e(TAG, "PDF loading failed: ${e.message}")
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    error = "Error: ${e.message}"
+                    error = "Cannot open PDF: ${e.message}"
                 )
             }
         }
     }
 
     private fun openPdfFromUri(context: Context, uri: Uri) {
+        Log.d(TAG, "Opening PDF from URI: $uri")
+        
         try {
-            // Get a file descriptor from the content resolver
+            // Check if we have permission
+            val takeFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+            try {
+                context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+                Log.d(TAG, "Successfully took persistent URI permission")
+            } catch (e: SecurityException) {
+                Log.w(TAG, "Could not take persistent permission (may already have it): ${e.message}")
+            }
+            
+            // Try to open the file descriptor
             val fileDescriptor = context.contentResolver.openFileDescriptor(uri, "r")
-                ?: throw Exception("Cannot open PDF file")
+            if (fileDescriptor == null) {
+                throw Exception("Cannot open file descriptor for URI")
+            }
             
             this.fileDescriptor = fileDescriptor
-            pdfRenderer = PdfRenderer(fileDescriptor!!)
+            pdfRenderer = PdfRenderer(fileDescriptor)
+            
             val totalPages = pdfRenderer!!.pageCount
+            Log.d(TAG, "PDF opened successfully, pages: $totalPages")
 
             // Get file name from display name
             var fileName: String? = null
-            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                    if (nameIndex >= 0) {
-                        fileName = cursor.getString(nameIndex)
+            try {
+                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        if (nameIndex >= 0) {
+                            fileName = cursor.getString(nameIndex)
+                        }
                     }
                 }
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not get file name: ${e.message}")
+            }
+            
+            if (fileName == null) {
+                fileName = uri.lastPathSegment ?: "Unknown PDF"
             }
             
             _uiState.value = _uiState.value.copy(
@@ -127,11 +157,14 @@ class PdfViewModel @Inject constructor(
             
             renderPage(0)
         } catch (e: Exception) {
+            Log.e(TAG, "Error opening PDF from URI: ${e.message}")
             throw Exception("Cannot open PDF: ${e.message}")
         }
     }
     
     private fun openPdfFile(file: File) {
+        Log.d(TAG, "Opening PDF file: ${file.absolutePath}")
+        
         try {
             fileDescriptor = ParcelFileDescriptor.open(
                 file,
@@ -140,6 +173,7 @@ class PdfViewModel @Inject constructor(
             
             pdfRenderer = PdfRenderer(fileDescriptor!!)
             val totalPages = pdfRenderer!!.pageCount
+            Log.d(TAG, "PDF file opened, pages: $totalPages")
             
             _uiState.value = _uiState.value.copy(
                 fileName = file.name,
@@ -151,6 +185,7 @@ class PdfViewModel @Inject constructor(
             
             renderPage(0)
         } catch (e: Exception) {
+            Log.e(TAG, "Error opening PDF file: ${e.message}")
             throw Exception("Cannot open PDF: ${e.message}")
         }
     }
@@ -173,9 +208,11 @@ class PdfViewModel @Inject constructor(
                         currentPageBitmap = bitmap,
                         currentPage = pageIndex
                     )
+                    Log.d(TAG, "Page $pageIndex rendered successfully")
                 }
             }
         } catch (e: Exception) {
+            Log.e(TAG, "Error rendering page: ${e.message}")
             _uiState.value = _uiState.value.copy(
                 error = "Cannot render page: ${e.message}"
             )
@@ -202,7 +239,7 @@ class PdfViewModel @Inject constructor(
             pdfRenderer?.close()
             fileDescriptor?.close()
         } catch (e: Exception) {
-            // Ignore cleanup errors
+            Log.e(TAG, "Error cleaning up: ${e.message}")
         }
     }
 }

@@ -1,10 +1,8 @@
 package com.libreintel.ui.screens.pdf
 
-import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -26,10 +24,17 @@ fun PdfViewerScreen(
 ) {
     val context = LocalContext.current
     var showInstallPrompt by remember { mutableStateOf(false) }
+    var hasTriedOpening by remember { mutableStateOf(false) }
     
     // Try to open PDF when screen loads
     LaunchedEffect(pdfUri) {
-        openPdfWithAnyApp(context, pdfUri)
+        if (!hasTriedOpening) {
+            hasTriedOpening = true
+            val success = openPdfWithAnyApp(context, pdfUri)
+            if (!success) {
+                showInstallPrompt = true
+            }
+        }
     }
     
     Scaffold(
@@ -67,14 +72,14 @@ fun PdfViewerScreen(
             Spacer(modifier = Modifier.height(24.dp))
             
             Text(
-                "Opening PDF...",
+                "Select a PDF App",
                 style = MaterialTheme.typography.titleLarge
             )
             
             Spacer(modifier = Modifier.height(8.dp))
             
             Text(
-                "If the PDF doesn't open, tap the button below.",
+                "Choose your preferred app to view the PDF",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
@@ -84,7 +89,8 @@ fun PdfViewerScreen(
             
             Button(
                 onClick = {
-                    if (!openPdfWithAnyApp(context, pdfUri)) {
+                    val success = openPdfWithAnyApp(context, pdfUri)
+                    if (!success) {
                         showInstallPrompt = true
                     }
                 },
@@ -92,7 +98,7 @@ fun PdfViewerScreen(
             ) {
                 Icon(Icons.Default.OpenInNew, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Open PDF")
+                Text("Open with PDF App")
             }
             
             Spacer(modifier = Modifier.height(16.dp))
@@ -110,12 +116,12 @@ fun PdfViewerScreen(
     if (showInstallPrompt) {
         AlertDialog(
             onDismissRequest = { showInstallPrompt = false },
-            title = { Text("No PDF Viewer Found") },
+            title = { Text("No PDF App Selected") },
             text = { 
                 Column {
-                    Text("Your phone doesn't seem to have a PDF viewer app installed.")
+                    Text("Please select a PDF viewer app from the list that appears.")
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("Would you like to install Google Files (free) from the Play Store?")
+                    Text("If no app is available, you can install Google Files from the Play Store.")
                 }
             },
             confirmButton = {
@@ -130,7 +136,7 @@ fun PdfViewerScreen(
                     }
                     showInstallPrompt = false
                 }) {
-                    Text("Install Google Files")
+                    Text("Get PDF Viewer")
                 }
             },
             dismissButton = {
@@ -146,39 +152,36 @@ private fun openPdfWithAnyApp(context: Context, pdfUri: String): Boolean {
     return try {
         val uri = Uri.parse(pdfUri)
         
-        // Try method 1: Standard VIEW intent with MIME type
+        // Grant URI permission explicitly
+        val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+        try {
+            context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+        } catch (e: SecurityException) {
+            // Permission might already be granted or not persistable
+        }
+        
+        // Try method 1: Standard VIEW intent with MIME type and chooser
         val intent1 = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/pdf")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         
-        if (intent1.resolveActivity(context.packageManager) != null) {
-            context.startActivity(intent1)
+        val chooser = Intent.createChooser(intent1, "Open PDF with...")
+        if (chooser.resolveActivity(context.packageManager) != null) {
+            context.startActivity(chooser)
             return true
         }
         
-        // Try method 2: Just VIEW with the URI
+        // Try method 2: Just VIEW with the URI (no MIME type)
         val intent2 = Intent(Intent.ACTION_VIEW).apply {
             data = uri
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         
-        if (intent2.resolveActivity(context.packageManager) != null) {
-            context.startActivity(intent2)
+        val chooser2 = Intent.createChooser(intent2, "Open PDF with...")
+        if (chooser2.resolveActivity(context.packageManager) != null) {
+            context.startActivity(chooser2)
             return true
-        }
-        
-        // Try method 3: Open with Google Files directly
-        try {
-            val googleFilesIntent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, "application/pdf")
-                setPackage("com.google.android.apps.nb.files")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            context.startActivity(googleFilesIntent)
-            return true
-        } catch (e: Exception) {
-            // Google Files not installed, try other methods
         }
         
         false

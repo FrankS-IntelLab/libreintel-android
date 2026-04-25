@@ -67,16 +67,26 @@ fun SettingsScreen(
         }
     }
 
-    // PDF file picker launcher
+    // PDF file picker launcher - opens PDF directly
     val openPdfLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.let {
-            // Persist permission for the PDF
-            val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION
-            context.contentResolver.takePersistableUriPermission(it, takeFlags)
-            // Navigate to PDF viewer with the URI
-            onOpenPdf(it.toString())
+            try {
+                // Grant persistable permission
+                val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                context.contentResolver.takePersistableUriPermission(it, takeFlags)
+                
+                // Open PDF directly with a chooser
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(it, "application/pdf")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                val chooser = Intent.createChooser(intent, "Open PDF with...")
+                context.startActivity(chooser)
+            } catch (e: Exception) {
+                Toast.makeText(context, "Cannot open PDF: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
         }
     }
     
@@ -304,11 +314,11 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     
                     Text(
-                        "LibreIntel v1.2.2",
+                        "LibreIntel v1.3.0",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
-                        "PDF Reader - Chooser Fix",
+                        "PDF Reader - Direct Open",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

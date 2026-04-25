@@ -51,7 +51,18 @@ class PdfViewModel @Inject constructor(
                     if (file.exists() && file.canRead()) {
                         openPdfFile(file)
                     } else {
-                        // Try as URI
+                        // Try as content:// URI (requires context)
+                        try {
+                            val uri = Uri.parse(path)
+                            if (uri.scheme == "content") {
+                                openPdfFromUri(context, uri)
+                                return@withContext
+                            }
+                        } catch (e: Exception) {
+                            // Ignore URI parse errors
+                        }
+                        
+                        // Try as file:// URI
                         try {
                             val uri = Uri.parse(path)
                             if (uri.scheme == "file") {
@@ -75,6 +86,41 @@ class PdfViewModel @Inject constructor(
                     error = "Error: ${e.message}"
                 )
             }
+        }
+    }
+
+    private fun openPdfFromUri(context: Context, uri: Uri) {
+        try {
+            // Get a file descriptor from the content resolver
+            val fileDescriptor = context.contentResolver.openFileDescriptor(uri, "r")
+                ?: throw Exception("Cannot open PDF file")
+            
+            this.fileDescriptor = fileDescriptor
+            pdfRenderer = PdfRenderer(fileDescriptor!!)
+            val totalPages = pdfRenderer!!.pageCount
+
+            // Get file name from display name
+            var fileName: String? = null
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (nameIndex >= 0) {
+                        fileName = cursor.getString(nameIndex)
+                    }
+                }
+            }
+            
+            _uiState.value = _uiState.value.copy(
+                fileName = fileName,
+                filePath = uri.toString(),
+                totalPages = totalPages,
+                currentPage = 0,
+                isLoading = false
+            )
+            
+            renderPage(0)
+        } catch (e: Exception) {
+            throw Exception("Cannot open PDF: ${e.message}")
         }
     }
     

@@ -1,13 +1,21 @@
+# OS files
 .DS_Store
-*.zip
+Thumbs.db
+
+# Development notes (personal)
 DEVNOTES.md
 PROJECT_STATUS.md
+
+# Custom tooling
 .kiro/
 
-# Android build files
-android/.gradle/
-android/app/build/
-android/build/
-android/.idea/
-android/*.iml
-android/local.properties
+# Android (handled by android/.gitignore)
+# Note: android/.gitignore covers all build outputs, gradle cache, IDE files
+
+# Compiled outputs
+*.zip
+*.apk
+*.ap_
+*.dex
+*.class
+*.jar

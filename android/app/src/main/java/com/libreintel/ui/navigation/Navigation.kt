@@ -16,6 +16,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.libreintel.ui.screens.chat.ChatScreen
+import com.libreintel.ui.screens.pdf.PdfViewerScreen
 import com.libreintel.ui.screens.settings.SettingsScreen
 import com.libreintel.ui.screens.tree.TreeScreen
 
@@ -31,6 +32,9 @@ sealed class Screen(
     data object Settings : Screen("settings", "Settings", Icons.Default.Settings)
     data object Chat : Screen("chat/{nodeId}", "Chat", Icons.Default.Chat) {
         fun createRoute(nodeId: String) = "chat/$nodeId"
+    }
+    data object PdfViewer : Screen("pdf/{pdfUri}", "PDF", Icons.Default.PictureAsPdf) {
+        fun createRoute(pdfUri: String) = "pdf/${java.net.URLEncoder.encode(pdfUri, "UTF-8")}"
     }
 }
 
@@ -89,7 +93,11 @@ fun LibreIntelNavigation() {
             }
             
             composable(Screen.Settings.route) {
-                SettingsScreen()
+                SettingsScreen(
+                    onOpenPdf = { pdfUri ->
+                        navController.navigate(Screen.PdfViewer.createRoute(pdfUri))
+                    }
+                )
             }
             
             composable(
@@ -102,6 +110,25 @@ fun LibreIntelNavigation() {
                 ChatScreen(
                     nodeId = nodeId,
                     onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = Screen.PdfViewer.route,
+                arguments = listOf(
+                    navArgument("pdfUri") { type = NavType.StringType }
+                )
+            ) { backStackEntry ->
+                val pdfUri = backStackEntry.arguments?.getString("pdfUri") ?: return@composable
+                val decodedUri = java.net.URLDecoder.decode(pdfUri, "UTF-8")
+                PdfViewerScreen(
+                    pdfUri = decodedUri,
+                    onBack = { navController.popBackStack() },
+                    onPushToTree = { text, sourceUrl ->
+                        // Navigate to tree and add a new node
+                        // For now, pop back to tree - could enhance later
+                        navController.popBackStack(Screen.Tree.route, false)
+                    }
                 )
             }
         }

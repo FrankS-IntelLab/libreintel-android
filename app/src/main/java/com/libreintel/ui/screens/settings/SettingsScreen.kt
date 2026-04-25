@@ -304,11 +304,11 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     
                     Text(
-                        "LibreIntel v1.1.0",
+                        "LibreIntel v1.1.1",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
-                        "PDF Reader & Knowledge Tree",
+                        "PDF Reader Bug Fix",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

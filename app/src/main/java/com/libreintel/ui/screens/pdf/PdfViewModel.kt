@@ -59,7 +59,7 @@ class PdfViewModel @Inject constructor(
                                 return@withContext
                             }
                         } catch (e: Exception) {
-                            // Ignore URI parse errors
+                            // Try file:// URI instead
                         }
                         
                         // Try as file:// URI
@@ -74,6 +74,13 @@ class PdfViewModel @Inject constructor(
                             }
                         } catch (e: Exception) {
                             // Ignore URI parse errors
+                        }
+                        
+                        // Last try: treat as a direct file path without leading slash
+                        val directFile = File(path)
+                        if (directFile.exists() && directFile.canRead()) {
+                            openPdfFile(directFile)
+                            return@withContext
                         }
                         
                         // Failed

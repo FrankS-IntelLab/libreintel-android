@@ -2,15 +2,20 @@
 .DS_Store
 Thumbs.db
 
-# Development notes (personal)
+# Development notes (personal - not committed)
 DEVNOTES.md
 PROJECT_STATUS.md
 
 # Custom tooling
 .kiro/
 
-# Android (handled by android/.gitignore)
-# Note: android/.gitignore covers all build outputs, gradle cache, IDE files
+# Android build files
+.gradle/
+app/build/
+build/
+.idea/
+*.iml
+local.properties
 
 # Compiled outputs
 *.zip
